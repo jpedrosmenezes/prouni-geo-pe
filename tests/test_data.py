@@ -48,3 +48,14 @@ def test_quantile_classes_cobre_todos_os_valores():
     valores = pd.Series([1, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89])
     classes = quantile_classes(valores)
     assert classes.notna().all()
+
+
+def test_mapa_cobre_todos_os_municipios_para_qualquer_minimo(pe):
+    from src.prouni.geo import map_frame
+
+    resumo, _ = municipal_summary(pe)
+    for metric in ("total", "pct_integral"):
+        for minimo in range(1, 51):
+            frame, ordem, cores, _ = map_frame(resumo, metric, minimo)
+            assert frame["classe"].isin(cores).all(), (metric, minimo)
+            assert set(frame["classe"]) <= set(ordem), (metric, minimo)

@@ -10,8 +10,7 @@ Dashboard interativo que analisa a distribuição de bolsas do **ProUni** em **P
 
 > Apps no Streamlit Community Cloud hibernam após um tempo sem acessos. Se aparecer a tela de "wake up", basta clicar no botão e aguardar alguns segundos.
 
-<!-- Substitua pelos seus prints/GIF, ex.: docs/img/home.png, docs/img/graficos.png, docs/img/mapa.png -->
-<!-- ![Mapa de bolsas por município](docs/img/mapa.png) -->
+![Mapa de bolsas por município](docs/img/mapa.png)
 
 ---
 
@@ -30,23 +29,24 @@ Como as bolsas do ProUni estão distribuídas em Pernambuco entre perfis de bene
 
 | Página | O que mostra |
 |---|---|
-| **Home** | Contexto do projeto e resumo da análise |
-| **Gráficos** | Distribuição por tipo de bolsa (Brasil × PE), raça/cor, sexo, deficiência física e top 10 municípios |
-| **Mapa** | Mapa coroplético de bolsas por município de residência do beneficiário |
+| **Visão geral** | Indicadores-chave (com comparação ao Brasil), achados calculados a partir dos dados e notas de método |
+| **Gráficos** | Brasil × PE (tipo de bolsa, modalidade), turno, perfil por raça/cor, sexo, faixa etária e deficiência, ranking de municípios; filtros por modalidade e tipo de bolsa |
+| **Mapa** | Mapa interativo dos 185 municípios por nº de bolsas ou % de bolsas integrais (classes por quantis), com ranking pesquisável |
 
 ## Dados e metodologia
 
 **Fontes**
 
-- **Bolsas ProUni 2020:** dados abertos do MEC (`ProuniRelatorioDadosAbertos2020.csv`). Fonte: `<link da página do conjunto de dados>`. Baixado em `AAAA-MM-DD`.
-- **Malha municipal de PE:** IBGE (`PE_Municipios_2025.shp`). Fonte: `<link da página de download>`.
+- **Bolsas ProUni 2020:** dados abertos do MEC (`ProuniRelatorioDadosAbertos2020.csv`). Fonte: [`2020 - Bolsas concedidas e perfil dos beneficiários do Prouni`](https://dadosabertos.mec.gov.br/prouni). Baixado em `2026-04-18`.
+- **Malha municipal de PE:** IBGE (`PE_Municipios_2025.shp`). Fonte: [`2025 - Malha Municipal/Municípios de Pernambuco`](https://www.ibge.gov.br/geociencias/organizacao-do-territorio/malhas-territoriais).
 
 **Tratamento**
 
-1. Leitura do CSV (separador `;`) e filtro por `UF_BENEFICIARIO == "PE"`.
-2. Remoção de registros com valores ausentes nas colunas analisadas.
-3. Padronização de rótulos (ex.: correção de encoding em "Indígena") e de nomes de municípios (sem acento, maiúsculas) para cruzar com a malha do IBGE.
-4. Contagem de bolsas por município e junção (`merge`) com o shapefile.
+1. Leitura do CSV (`;`, `latin1`) apenas das colunas necessárias. O CPF (já mascarado na fonte) não é carregado.
+2. Correção de rótulos de um arquivo com codificação mista (ex.: `Ind¡gena` → `Indígena`).
+3. Normalização de nomes de municípios (sem acento, maiúsculas) e reconciliação de quatro grafias divergentes entre MEC e IBGE (Iguaraci, Itamaracá, Belém de São Francisco, Lagoa do Itaenga). Um teste garante que 100% das bolsas casam com a malha.
+4. Idade aproximada (2020 − ano de nascimento); datas implausíveis são descartadas.
+5. Fernando de Noronha é desenhada em um quadro de detalhe no mapa, para não distorcer a escala do continente.
 
 ### Limitações
 
@@ -59,36 +59,28 @@ Como as bolsas do ProUni estão distribuídas em Pernambuco entre perfis de bene
 
 ```
 .
-├── README.md
-├── LICENSE
-├── requirements.txt
-├── .gitignore
-├── .streamlit/
-│   └── config.toml
-├── app.py                  # ponto de entrada e navegação
+├── app.py                  # ponto de entrada: página, tema e navegação
 ├── views/                  # páginas do Streamlit
 │   ├── home.py
 │   ├── graficos.py
 │   └── mapa.py
-├── src/
-│   └── prouni/
-│       ├── __init__.py
-│       ├── constants.py    # colunas, ordem de categorias, lista da RMR
-│       ├── data.py         # leitura, limpeza e cache dos dados
-│       ├── geo.py          # normalização de nomes e merge com a malha
-│       └── plots.py        # funções que geram as figuras
-├── data/
-│   ├── raw/                # CSV original (ver seção Dados)
-│   └── processed/          # dados já filtrados para PE
-├── mapa/                   # shapefile dos municípios de PE
-├── notebooks/
-│   └── analise.ipynb       # exploração original
-├── tests/
-│   ├── test_data.py
-│   └── test_geo.py
-└── .github/
-    └── workflows/
-        └── ci.yml          # lint + testes
+├── src/prouni/
+│   ├── constants.py        # caminhos, paleta, ordens de categorias, RMR, aliases
+│   ├── data.py             # leitura, limpeza e cache dos dados
+│   ├── geo.py              # malha IBGE, resumo por município, classes de quantis
+│   ├── plots.py            # gráficos (Plotly)
+│   ├── svgmap.py           # mapa coroplético em SVG responsivo
+│   ├── formatting.py       # números no padrão brasileiro
+│   └── ui.py               # CSS e componentes compartilhados
+├── data/raw/               # CSV do MEC e shapefile do IBGE (data/raw/mapa)
+├── docs/img/    
+├── notebooks/analise.ipynb # exploração original
+├── tests/                  # dados, merge com a malha e fumaça das páginas
+├── .streamlit/config.toml  # tema
+├── .github/workflows/ci.yml
+├── pyproject.toml          # ruff e pytest
+├── requirements.txt        # dependências do app
+└── requirements-dev.txt    # + pytest e ruff
 ```
 
 ## Como rodar localmente
@@ -97,8 +89,8 @@ Requisitos: Python 3.11 ou superior.
 
 ```bash
 # 1. Clonar
-git clone https://github.com/jpedrosmenezes/ProUni-Data.git
-cd ProUni-Data
+git clone https://github.com/jpedrosmenezes/prouni-geo-pe.git
+cd prouni-geo-pe
 
 # 2. Ambiente virtual
 python -m venv .venv
@@ -116,32 +108,28 @@ O app abre em `http://localhost:8501`.
 ## Testes e qualidade
 
 ```bash
-pip install ruff pytest
+pip install -r requirements-dev.txt
 ruff check .
-pytest
+python -m pytest
 ```
 
 ## Tecnologias
 
-- **Python**
-- **Pandas** para tratamento de dados
-- **GeoPandas** para dados geoespaciais
-- **Matplotlib e Seaborn** para visualização
+- **Python**, **Pandas** e **GeoPandas** para dados e geoprocessamento
+- **Plotly** para gráficos interativos
+- **SVG + CSS** gerados em Python para o mapa (sem WebGL nem CDN)
 - **Streamlit** para a interface
+- **pytest** e **ruff**, com CI no GitHub Actions
 
 ## Próximos passos
 
 - [ ] Normalizar bolsas por população (bolsas por mil habitantes)
-- [ ] Mapa interativo com tooltip (município e total)
-- [ ] Filtros por tipo de bolsa, modalidade e turno
+- [x] Mapa interativo com tooltip (município e total)
+- [x] Filtros por tipo de bolsa e modalidade
 - [ ] Incluir outros anos do ProUni e comparar a evolução
-- [ ] Testes automatizados do merge de municípios
+- [x] Testes automatizados do merge de municípios
 
 ## Licença e fontes
 
 - **Código:** [MIT](LICENSE) © 2026 João Pedro S. Menezes
 - **Dados:** mantêm as licenças e termos de uso das fontes originais citadas acima.
-
-## Autor
-
-**João Pedro S. Menezes**: [GitHub](https://github.com/jpedrosmenezes)
