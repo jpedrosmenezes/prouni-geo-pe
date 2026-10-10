@@ -1,212 +1,185 @@
+"""Gráficos: comparação Brasil × PE, perfil dos beneficiários e ranking de municípios."""
+
 import pandas as pd
-import numpy as np
-import geopandas as gpd
-import matplotlib.pyplot as plt
-import seaborn as sns
 import streamlit as st
 
-st.sidebar.markdown("# Gráficos 📊")
-
-st.title("# OS GRÁFICOS")
-
-df_geral = pd.read_csv("data/ProuniRelatorioDadosAbertos2020.csv", sep=';', encoding="latin1")
-df_pe = df_geral[df_geral["UF_BENEFICIARIO"] == 'PE']
-
-#display(df_pe.shape)
-#display(df_pe.info())
-#display(df_pe.isna().sum())
-
-colunas = [#"NOME_IES_BOLSA",
-           "TIPO_BOLSA",
-           "MODALIDADE_ENSINO_BOLSA",
-           #"NOME_CURSO_BOLSA",
-           "NOME_TURNO_CURSO_BOLSA",
-           #"CPF_BENEFICIARIO",
-           "SEXO_BENEFICIARIO",
-           "RACA_BENEFICIARIO",
-           "DATA_NASCIMENTO",
-           "BENEFICIARIO_DEFICIENTE_FISICO",
-           "MUNICIPIO_BENEFICIARIO"]
-
-df_pe = df_pe.dropna(subset=colunas)
-
-df_pe_analisado = df_pe[colunas]
-df_pe_analisado["DATA_NASCIMENTO"] = pd.to_datetime(df_pe_analisado["DATA_NASCIMENTO"], format="%d/%m/%Y")
-df_pe_analisado = df_pe_analisado.sort_values(by = "DATA_NASCIMENTO")
-df_pe_analisado = df_pe_analisado.reset_index(drop=True)
-
-series_pe_municipios = df_pe_analisado["MUNICIPIO_BENEFICIARIO"].value_counts()
-df_pe_municipios = series_pe_municipios.reset_index()
-df_pe_municipios.columns = ["MUNICIPIOS", "TOTAL"]
-
-st.subheader("DISTRIBUIÇÃO DE BOLSAS NACIONAL E ESTADUAL:")
-st.write("""
-Os gráficos de pizza revelam a distribuição de bolsas nos âmbitos **nacional** e **estadual**.
-É possível perceber uma paridade entre ambos,
-evidenciando que a distribuição de bolsas no estado reflete o cenário do Brasil.
-""")
-
-#distribuição de bolsas no Brasil e no estado de Pernambuco
-fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
-
-df_geral["TIPO_BOLSA"].value_counts().plot.pie(
-    autopct="%1.1f%%",
-    ax = ax1
+from src.prouni.constants import (
+    COLOR_MODALIDADE,
+    COLOR_TIPO,
+    ORDEM_FAIXA_ETARIA,
+    ORDEM_RACA,
+    RMR_LABEL,
 )
-ax1.set_title("DISTRIBUIÇÃO NACIONAL DE BOLSAS", fontsize=13)
+from src.prouni.data import load_data, split_br_pe
+from src.prouni.formatting import fmt_int, fmt_pct, fmt_pp
+from src.prouni.geo import municipal_summary
+from src.prouni.plots import CHART_CONFIG, share_comparison, stacked_by_tipo, top_municipios
+from src.prouni.ui import callout, footer, page_header, section
 
-df_pe_analisado["TIPO_BOLSA"].value_counts().plot.pie(
-    autopct="%1.1f%%",
-    ax = ax2
-)
-ax2.set_title("DISTRIBUIÇÃO DE BOLSAS NO ESTADO DE PERNAMBUCO", fontsize=13)
+br, pe_all = split_br_pe(load_data())
 
-st.pyplot(fig)
 
-st.subheader("DISTRIBUIÇÃO POR PERFIL ÉTNICO-RACIAL EM PERNAMBUCO:")
-st.write("""
-A análise revela uma predominância de beneficiários que se autodeclaram **pardos**, seguidos por **brancos** e **pretos**. 
-Em todos os grupos, observa-se que as **bolsas integrais** representam a grande maioria das concessões em Pernambuco.
-Esse cenário demonstra uma paridade com os indicadores nacionais, mantendo a consistência do perfil demográfico atendido pelo programa.
-""")
+def mostrar(fig):
+    st.plotly_chart(fig, width="stretch", theme=None, config=CHART_CONFIG)
 
-#distribuição de bolsas por perfil étnico-racial em Pernambuco
-fig, ax = plt.subplots(figsize=(12, 5))
 
-df_pe_analisado["RACA_BENEFICIARIO"] = df_pe_analisado["RACA_BENEFICIARIO"].replace('Ind¡gena', 'Indígena')
-ordem_perfis = ["Parda", "Branca", "Preta", "Amarela", "Indígena"]
+def pct(serie, valor):
+    s = serie.dropna()
+    return (s == valor).mean() * 100 if len(s) else 0.0
 
-sns.countplot(
-    data=df_pe_analisado,
-    x="RACA_BENEFICIARIO",
-    hue="TIPO_BOLSA",
-    order=ordem_perfis,
-    ax=ax
-)
-ax.set_title("DISTRIBUIÇÃO POR PERFIL ÉTNICO-RACIAL")
-ax.set_xlabel("PERFIL ÉTNICO-RACIAL DO BENEFICIÁRIO")
-ax.set_ylabel("QUANTIDADE DE BOLSAS")
-ax.legend(title="TIPO DE BOLSA")
 
-st.pyplot(fig)
-
-st.subheader("DISTRIBUIÇÃO DE BOLSAS POR SEXO EM PERNAMBUCO:")
-st.write("""
-A análise demográfica revela que as **mulheres** detêm a maior parcela dos benefícios concedidos no estado. 
-Nota-se que a modalidade **integral** é a grande protagonista em ambos os grupos, indicando que a maioria dos estudantes atendidos em Pernambuco conta com a isenção total das mensalidades, independentemente do gênero.
-""")
-
-#distribuição de bolsas por sexo do beneficiário em Pernambuco
-fig, ax = plt.subplots(figsize=(12, 5))
-
-sns.countplot (
-    data = df_pe_analisado,
-    x = "SEXO_BENEFICIARIO",
-    hue = "TIPO_BOLSA",
-    ax = ax
-)
-ax.set_title("DISTRIBUIÇÃO DE BOLSAS POR SEXO")
-ax.set_xlabel("SEXO DO BENEFICIÁRIO")
-ax.set_ylabel("QUANTIDADE DE BOLSAS")
-ax.legend(title="TIPO DE BOLSA")
-
-st.pyplot(fig)
-
-st.subheader("DISTRIBUIÇÃO DE BOLSAS PARA DEFICIÊNTES FÍSICOS:")
-st.write("""
-Este recorte quantifica a presença de beneficiários com deficiência física no programa. 
-Embora o volume total de bolsas concentre-se em pessoas sem deficiência, o monitoramento desses dados é essencial para medir o alcance das políticas de **inclusão educacional**.
-Observa-se que, mesmo no grupo PCD, a oferta de **bolsas integrais** permanece como o principal modelo de auxílio oferecido no estado.
-""")
-
-#distribuição de bolsas para deficiêntes físicos em Pernambuco
-fig, ax = plt.subplots(figsize=(12, 5))
-
-sns.countplot(
-    data = df_pe_analisado,
-    x = "BENEFICIARIO_DEFICIENTE_FISICO",
-    hue = "TIPO_BOLSA",
-    ax=ax
-)
-ax.set_title("DISTRIBUIÇÃO DE BOLSAS ENTRE PESSOAS COM E SEM DEFICIÊNCIA FÍSICA")
-ax.set_xlabel("BENEFICIÁRIO DEFICIÊNTE FÍSICO")
-ax.set_ylabel("QUANTIDADE DE BOLSAS")
-ax.legend(title="TIPO DE BOLSA")
-
-st.pyplot(fig)
-
-st.subheader("DISTRIBUIÇÃO DE BOLSAS NACIONAL E ESTADUAL:")
-st.write("""
-A análise regional destaca uma forte **centralização na Região Metropolitana do Recife**, que abriga a maioria das cidades com maior volume de beneficiários. 
-Entre as exceções fora do eixo metropolitano, destacam-se polos regionais como **Caruaru, Petrolina e Bonito**, que exercem papel fundamental na interiorização do acesso ao ensino superior.
-Esse cenário evidencia como as bolsas estão distribuídas entre os principais centros urbanos e de desenvolvimento do estado.
-""")
-
-#distribuição de bolsas entre os top 10 municípios de Pernambuco
-df_pe_top_municipios = df_pe_municipios.head(10)
-
-regiao_metropolitana = ["RECIFE",
-                        "JABOATAO DOS GUARARAPES",
-                        "OLINDA",
-                        "PAULISTA",
-                        "CABO DE SANTO AGOSTINHO",
-                        "CAMARAGIBE",
-                        "IGARASSU",
-                        "SAO LOURENCO DA MATA",
-                        "ABREU E LIMA",
-                        "IPOJUCA",
-                        "MORENO",
-                        "ITAPISSUMA",
-                        "ARAÇOIABA",
-                        "ILHA DE ITAMARACA"]
-
-df_pe_top_municipios["REGIÃO METROPOLITANA"] = np.where(df_pe_top_municipios["MUNICIPIOS"].isin(regiao_metropolitana), "SIM", "NÃO")
-
-fig, ax = plt.subplots(figsize=(12, 5))
-
-sns.barplot(
-    data = df_pe_top_municipios,
-    x = "MUNICIPIOS",
-    y = "TOTAL",
-    hue = "REGIÃO METROPOLITANA",
-    ax = ax
-)
-ax.set_title("TOP 10 MUNICÍPIOS COM MAIS BENEFICIÁRIOS")
-ax.set_xlabel("MUNICÍPIOS DE BENEFICIÁRIOS")
-ax.tick_params(axis='x', rotation=90)
-ax.set_ylabel("QUANTIDADE DE BOLSAS")
-
-st.pyplot(fig)
-
-st.write("""
----
-""")
-st.subheader("(TESTE) HEATMAP DA DISTRIBUIÇÃO DE BOLSAS POR PERFIL ÉTNICO-RACIAL")
-st.write("""
-Este mapa de calor cruza o perfil étnico-racial com a modalidade da bolsa, permitindo visualizar a **densidade de beneficiários** em cada categoria. 
-A intensidade do vermelho confirma que a maior concentração de estudantes em Pernambuco está no grupo de **bolsistas integrais que se autodeclaram pardos**.
-""")
-
-#(teste) heatmap da distribuição de bolsas por perfil étnico-racial em Pernambuco
-tabela = pd.crosstab(
-    df_pe_analisado["RACA_BENEFICIARIO"],
-    df_pe_analisado["TIPO_BOLSA"]
+page_header(
+    "Análise",
+    "Gráficos",
+    "Como as bolsas se distribuem por tipo, modalidade, perfil dos beneficiários e município.",
 )
 
-tabela = tabela.reindex(ordem_perfis)
 
-fig, ax = plt.subplots(figsize=(12, 5))
+with st.sidebar:
+    st.markdown("#### Filtros · Pernambuco")
+    st.caption("Aplicam-se às abas **Perfil** e **Municípios**. A comparação Brasil × PE usa todos os dados.")
+    f_modalidade = st.pills(
+        "Modalidade",
+        options=list(COLOR_MODALIDADE),
+        selection_mode="multi",
+        default=list(COLOR_MODALIDADE),
+        key="f_modalidade",
+    )
+    f_tipo = st.pills(
+        "Tipo de bolsa",
+        options=list(COLOR_TIPO),
+        selection_mode="multi",
+        default=list(COLOR_TIPO),
+        key="f_tipo",
+    )
 
-sns.heatmap(
-    tabela,
-    annot=True,
-    fmt="d",
-    cmap="Reds",
-    ax=ax
-)
-ax.set_title("DISTRIBUIÇÃO DE BOLSAS POR RAÇA")
-ax.set_xlabel("TIPO DE BOLSA")
-ax.set_ylabel("QUANTIDADE DE BOLSAS POR RAÇA")
-ax.tick_params(axis='y', rotation=0)
+pe = pe_all[
+    pe_all["modalidade"].isin(f_modalidade or list(COLOR_MODALIDADE))
+    & pe_all["tipo"].isin(f_tipo or list(COLOR_TIPO))
+]
 
-st.pyplot(fig)
+tab_comp, tab_perfil, tab_mun = st.tabs(["Brasil × Pernambuco", "Perfil dos beneficiários", "Municípios"])
+
+
+with tab_comp:
+    integral_pe, integral_br = pct(pe_all["tipo"], "Integral"), pct(br["tipo"], "Integral")
+    ead_pe, ead_br = pct(pe_all["modalidade"], "EAD"), pct(br["modalidade"], "EAD")
+
+    esq, dir_ = st.columns(2, gap="large")
+    with esq:
+        section(
+            "Tipo de bolsa",
+            f"Em Pernambuco, {fmt_pct(integral_pe)} das bolsas são integrais "
+            f"({fmt_pp(integral_pe - integral_br)} em relação ao Brasil).",
+        )
+        mostrar(share_comparison({"Brasil": br["tipo"], "Pernambuco": pe_all["tipo"]}, COLOR_TIPO))
+    with dir_:
+        section(
+            "Modalidade de ensino",
+            f"Cursos a distância somam {fmt_pct(ead_pe)} das bolsas em PE "
+            f"({fmt_pp(ead_pe - ead_br)} em relação ao Brasil).",
+        )
+        mostrar(share_comparison({"Brasil": br["modalidade"], "Pernambuco": pe_all["modalidade"]}, COLOR_MODALIDADE))
+
+    section("Turno do curso em Pernambuco", "Nº de bolsas por turno, separado por tipo de bolsa.")
+    mostrar(stacked_by_tipo(pe_all, "turno", height=300))
+
+
+with tab_perfil:
+    if pe.empty:
+        st.info("Nenhuma bolsa corresponde aos filtros selecionados.")
+    else:
+        st.caption(f"{fmt_int(len(pe))} de {fmt_int(len(pe_all))} bolsas de Pernambuco nos filtros atuais.")
+
+        esq, dir_ = st.columns([3, 2], gap="large")
+        with esq:
+            top_raca = pe["raca"].value_counts(normalize=True).mul(100)
+            lider = top_raca.index[0]
+            section(
+                "Raça/cor",
+                f"Autodeclaradas {lider.lower()}s são o maior grupo ({fmt_pct(top_raca.iloc[0])}).",
+            )
+            mostrar(stacked_by_tipo(pe, "raca", order=ORDEM_RACA, height=330))
+        with dir_:
+            fem = pct(pe["sexo"], "Feminino")
+            section("Sexo", f"Mulheres recebem {fmt_pct(fem)} das bolsas.")
+            mostrar(stacked_by_tipo(pe, "sexo", height=330))
+
+        esq, dir_ = st.columns([3, 2], gap="large")
+        with esq:
+            mediana = pe["idade"].median()
+            section("Faixa etária", f"Idade mediana de {mediana:.0f} anos no ano da concessão.")
+            mostrar(stacked_by_tipo(pe, "faixa_etaria", order=ORDEM_FAIXA_ETARIA, height=330, horizontal=False))
+        with dir_:
+            com = pe[pe["pcd"] == "Sim"]
+            sem = pe[pe["pcd"] == "Não"]
+            section("Deficiência física", "Beneficiários que declaram deficiência física.")
+            m1, m2 = st.columns(2)
+            m1.metric("Com deficiência", fmt_int(len(com)), border=True)
+            m2.metric("% do total", fmt_pct(len(com) / len(pe) * 100), border=True)
+            if len(com) and len(sem):
+                mostrar(
+                    share_comparison(
+                        {"Sem deficiência": sem["tipo"], "Com deficiência": com["tipo"]},
+                        COLOR_TIPO,
+                        height=170,
+                    )
+                )
+            st.caption("Recorte pequeno: leia proporções com cautela.")
+
+        with st.expander("Ver dados em tabela"):
+            tabela = (
+                pd.crosstab(pe["raca"], pe["tipo"], margins=True, margins_name="Total")
+                .reindex([*ORDEM_RACA, "Total"])
+                .dropna(how="all")
+                .fillna(0)
+                .astype(int)
+            )
+            st.dataframe(tabela, width="stretch")
+
+
+with tab_mun:
+    if pe.empty:
+        st.info("Nenhuma bolsa corresponde aos filtros selecionados.")
+    else:
+        resumo, _ = municipal_summary(pe)
+        total = resumo["bolsas"].sum()
+        rmr = resumo.loc[resumo["grupo"] == RMR_LABEL, "bolsas"].sum() / total * 100
+        top10 = resumo.head(10)["bolsas"].sum() / total * 100
+        recife = resumo.iloc[0]
+
+        esq, dir_ = st.columns([3, 2], gap="large")
+        with esq:
+            section("Dez municípios com mais bolsas", "Cor indica se o município pertence à Região Metropolitana do Recife.")
+            mostrar(top_municipios(resumo, 10))
+        with dir_:
+            section("Concentração")
+            st.metric("Região Metropolitana do Recife", fmt_pct(rmr), border=True)
+            st.metric(f"Só {recife['nome']}", fmt_pct(recife["bolsas"] / total * 100), border=True)
+            st.metric("Dez maiores municípios", fmt_pct(top10), border=True)
+            callout(
+                "Contagens absolutas favorecem municípios populosos. "
+                "Para ver a distribuição espacial completa, abra o <b>Mapa</b>."
+            )
+
+        st.markdown("<div style='margin-top: 25px;'></div>", unsafe_allow_html=True)
+        with st.expander("Ver dados em tabela"):
+            st.dataframe(
+                resumo[["nome", "grupo", "bolsas", "integrais", "pct_integral"]]
+                .rename(
+                    columns={
+                        "nome": "Município",
+                        "grupo": "Grupo",
+                        "bolsas": "Bolsas",
+                        "integrais": "Integrais",
+                        "pct_integral": "% integrais",
+                    }
+                )
+                .head(25),
+                hide_index=True,
+                width="stretch",
+                column_config={"% integrais": st.column_config.NumberColumn(format="%.1f%%")},
+            )
+            st.caption("25 municípios com mais bolsas. A lista completa está na página Mapa.")
+
+footer()
