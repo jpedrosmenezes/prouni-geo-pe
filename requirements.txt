@@ -1,7 +1,6 @@
-streamlit
-pandas
-geopandas
+streamlit>=1.50
+pandas>=2.2
+numpy
+geopandas>=1.0
 pyogrio
-matplotlib
-seaborn
-mapclassify
+plotly>=5.24

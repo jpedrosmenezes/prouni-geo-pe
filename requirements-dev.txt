@@ -1,0 +1,7 @@
+-r requirements.txt
+matplotlib
+seaborn
+mapclassify
+ipykernel
+pytest
+ruff
